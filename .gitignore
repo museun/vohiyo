@@ -1,0 +1,6 @@
+/target
+*.db
+*.env
+*.txt
+*.json
+vohiyo.toml
