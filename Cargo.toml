@@ -8,7 +8,6 @@ license = "0BSD"
 anyhow          = "1.0.70"
 eframe          = { version = "0.21.3", default-features = false, features = ["persistence", "dark-light", "glow"] }
 egui            = "0.21.0"
-fastrand        = "1.9.0"
 hashbrown       = "0.13.2"
 image           = { version = "0.24.6", default-features = false, features = ["png", "gif", "jpeg"] }
 indexmap        = { version = "1.9.3", features = ["serde"] }
