@@ -6,7 +6,7 @@ license = "0BSD"
 
 [dependencies]
 anyhow          = "1.0.70"
-eframe          = { version = "0.21.3", default-features = false, features = ["persistence", "dark-light", "glow"] }
+eframe          = { version = "0.21.3", default-features = false, features = ["persistence", "glow"] }
 egui            = "0.21.0"
 hashbrown       = "0.13.2"
 image           = { version = "0.24.6", default-features = false, features = ["png", "gif", "jpeg"] }
@@ -26,3 +26,5 @@ uuid            = { version = "1.3.1", features = ["v4"] }
 
 [patch.crates-io]
 twitch_message = { rev = "bef7a051f828b889c0020f1a6bb459d8f5fa09ea", git = "https://github.com/museun/twitch_message" }
+egui = { rev = "f96237824328e30e25e1322ce722d7e1b42fe68a", git = "https://github.com/emilk/egui" }
+eframe = { rev = "f96237824328e30e25e1322ce722d7e1b42fe68a", git = "https://github.com/emilk/egui" }
