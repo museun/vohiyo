@@ -8,7 +8,7 @@ use crate::{
     runtime::{EmoteMap, GameMap, ImageCache, StreamCheck, UserMap},
     state::{Channel, MessageOpts, SavedState, Screen, State, ViewState},
     twitch,
-    views::{InitialView, MainView, StartScreen},
+    views::{InitialView, MainView, StartView},
 };
 
 pub struct App {
@@ -21,9 +21,7 @@ pub struct App {
     pub emote_map: EmoteMap,
     pub user_map: UserMap,
     pub game_map: GameMap,
-
     pub last: Option<(PrivmsgBuilder, TagsBuilder)>,
-
     pub conn: db::Connection,
 }
 
@@ -199,7 +197,7 @@ impl eframe::App for App {
 
         match &mut self.screen {
             Screen::Disconnected => {
-                StartScreen {
+                StartView {
                     twitch: &mut self.twitch,
                     screen: &mut self.screen,
                 }
