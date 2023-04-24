@@ -19,7 +19,10 @@ use twitch_message::{
     Color, IntoStatic, ParseResult, PingTracker,
 };
 
-use crate::{select2, Either, Repaint};
+use crate::{
+    repaint::Repaint,
+    util::{select2, Either},
+};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub enum Status {

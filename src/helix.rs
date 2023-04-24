@@ -4,7 +4,7 @@ use std::sync::Arc;
 use reqwest::{header::HeaderName, StatusCode};
 use tokio::{sync::Mutex, task::JoinSet};
 
-use crate::{resolver::Fut, ErasedRepaint, Repaint};
+use crate::{repaint::ErasedRepaint, repaint::Repaint, resolver::Fut};
 
 pub mod data;
 

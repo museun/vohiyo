@@ -3,6 +3,7 @@ mod helix;
 mod image;
 mod input;
 mod queue;
+mod repaint;
 mod resolver;
 mod runtime;
 mod state;
@@ -12,12 +13,6 @@ mod views;
 mod widgets;
 
 mod app;
-use app::App;
-
-mod repaint;
-use repaint::{ErasedRepaint, Repaint};
-
-use util::{select2, Either};
 
 #[tokio::main]
 async fn main() {
@@ -30,7 +25,7 @@ async fn main() {
     eframe::run_native(
         &format!("VoHiYo - {name}", name = config.name,),
         eframe::NativeOptions::default(),
-        Box::new(|cc| App::create(cc, config)),
+        Box::new(|cc| app::App::create(cc, config)),
     )
     .unwrap();
 }

@@ -1,10 +1,17 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_variables,))]
+// TODO merge some of these types
 use std::{borrow::Cow, time::Duration};
 
 use hashbrown::{HashMap, HashSet};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
-use crate::{helix, image::Image, repaint::Repaint, resolver, select2, Either};
+use crate::{
+    helix,
+    image::Image,
+    repaint::Repaint,
+    resolver,
+    util::{select2, Either},
+};
 
 pub struct GameMap {
     map: resolver::ResolverMap<String, helix::data::Game, Option<helix::data::Game>>,
