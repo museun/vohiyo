@@ -1,3 +1,5 @@
+#![cfg_attr(debug_assertions, allow(dead_code, unused_variables,))]
+
 use twitch_message::messages::Privmsg;
 use uuid::Uuid;
 

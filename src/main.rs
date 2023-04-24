@@ -1,35 +1,23 @@
-#![cfg_attr(debug_assertions, allow(dead_code, unused_variables,))]
+mod db;
+mod helix;
+mod image;
+mod input;
+mod queue;
+mod resolver;
+mod runtime;
+mod state;
+mod twitch;
+mod util;
+mod views;
+mod widgets;
 
 mod app;
 use app::App;
 
-mod state;
-
-mod input;
-
-mod views;
-
-mod widgets;
-
-mod queue;
-
-mod twitch;
-
-mod helix;
-
-mod util;
-pub use util::{select2, Either, Either::*};
-
-mod resolver;
-
-mod runtime;
-
-mod image;
-
 mod repaint;
 use repaint::{ErasedRepaint, Repaint};
 
-mod db;
+use util::{select2, Either};
 
 #[tokio::main]
 async fn main() {

@@ -1,3 +1,4 @@
+#![cfg_attr(debug_assertions, allow(dead_code, unused_variables,))]
 use std::{borrow::Borrow, future::Future, hash::Hash};
 
 use hashbrown::HashMap;

@@ -1,3 +1,4 @@
+#![cfg_attr(debug_assertions, allow(dead_code, unused_variables,))]
 use std::sync::Arc;
 
 use reqwest::{header::HeaderName, StatusCode};

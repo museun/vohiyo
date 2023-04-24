@@ -1,7 +1,4 @@
-use std::{
-    path::Path,
-    time::{Duration, Instant},
-};
+use std::path::Path;
 
 use egui::Color32;
 use indexmap::IndexSet;
@@ -189,10 +186,6 @@ impl<'a> SavedState<'a> {
 pub enum Screen {
     #[default]
     Disconnected,
-    Reconnecting {
-        when: Instant,
-        after: Duration,
-    },
     Connected {
         state: ViewState,
     },

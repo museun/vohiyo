@@ -1,14 +1,10 @@
+#![cfg_attr(debug_assertions, allow(dead_code, unused_variables,))]
 use std::{borrow::Cow, time::Duration};
 
 use hashbrown::{HashMap, HashSet};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
-use crate::{
-    helix,
-    image::Image,
-    repaint::{ErasedRepaint, Repaint},
-    resolver, select2, Either,
-};
+use crate::{helix, image::Image, repaint::Repaint, resolver, select2, Either};
 
 pub struct GameMap {
     map: resolver::ResolverMap<String, helix::data::Game, Option<helix::data::Game>>,
@@ -66,7 +62,7 @@ impl UserMap {
 
     pub fn poll(&mut self) {
         self.map.poll(|entry, user| {
-            if let Some((name, user)) = user {
+            if let Some((_name, user)) = user {
                 entry.set(user.login.clone(), user);
             }
         });
@@ -384,19 +380,14 @@ impl EmoteMap {
 
 pub struct ImageCache {
     images: resolver::ResolverMap<String, Image, (String, Option<Image>)>,
-    recv: UnboundedReceiver<resolver::Fut<(String, Option<Image>)>>,
     fetcher: ImageFetcher,
 }
 
 impl ImageCache {
     pub fn new(http: reqwest::Client, ctx: egui::Context) -> Self {
-        let (sender, recv) = unbounded_channel();
-        let fetcher = ImageFetcher { http, ctx, sender };
-
         Self {
             images: resolver::ResolverMap::new(),
-            recv,
-            fetcher,
+            fetcher: ImageFetcher::new(http, ctx),
         }
     }
 
@@ -410,10 +401,6 @@ impl ImageCache {
     }
 
     pub fn poll(&mut self) {
-        while let Ok(fut) = self.recv.try_recv() {
-            self.images.add(fut);
-        }
-
         self.images.poll(|entry, (k, v)| match v {
             Some(v) => {
                 eprintln!("fetched image: {k}");
@@ -427,7 +414,6 @@ impl ImageCache {
 }
 
 pub struct EmoteFetcher {
-    repaint: ErasedRepaint,
     seen: HashSet<Cow<'static, str>>,
     sender: UnboundedSender<String>,
     ready: UnboundedReceiver<(String, String)>,
@@ -469,7 +455,7 @@ impl EmoteFetcher {
                         tx: &UnboundedSender<(String, String)>,
                     ) -> bool {
                         if let Ok(resp) = http.get(&url).send().await {
-                            if let Ok(resp) = resp.error_for_status() {
+                            if let Ok(_resp) = resp.error_for_status() {
                                 let _ = tx.send((std::mem::take(&mut self.0), url));
                                 return true;
                             }
@@ -480,10 +466,12 @@ impl EmoteFetcher {
 
                 let mut emote = Emote(id);
                 if emote.try_get(emote.animated_url(), &http, &tx).await {
+                    repaint.repaint();
                     continue;
                 }
 
                 if emote.try_get(emote.static_url(), &http, &tx).await {
+                    repaint.repaint();
                     continue;
                 }
 
@@ -492,7 +480,6 @@ impl EmoteFetcher {
         });
 
         Self {
-            repaint: repaint.erased(),
             seen: HashSet::new(),
             ready,
             sender,
@@ -517,16 +504,11 @@ impl EmoteFetcher {
 pub struct ImageFetcher {
     http: reqwest::Client,
     ctx: egui::Context,
-    sender: UnboundedSender<resolver::Fut<(String, Option<Image>)>>,
 }
 
 impl ImageFetcher {
-    pub const fn new(
-        http: reqwest::Client,
-        ctx: egui::Context,
-        sender: UnboundedSender<resolver::Fut<(String, Option<Image>)>>,
-    ) -> Self {
-        Self { http, ctx, sender }
+    pub const fn new(http: reqwest::Client, ctx: egui::Context) -> Self {
+        Self { http, ctx }
     }
 
     pub fn get_image(&self, url: &str) -> resolver::Fut<(String, Option<Image>)> {
@@ -538,9 +520,9 @@ impl ImageFetcher {
         tokio::spawn(async move {
             let Ok(resp) = client.get(&url).send().await else { return };
             let true = resp.status().is_success() else {
-            let _ = tx.send((url, None));
-            return;
-        };
+                let _ = tx.send((url, None));
+                return;
+            };
 
             let Ok(data) = resp.bytes().await.map(|data| data.to_vec()) else { return };
 
@@ -552,9 +534,5 @@ impl ImageFetcher {
         });
 
         resolver::Fut::new(rx)
-    }
-
-    fn fetch_image(&self, url: &str) {
-        let _ = self.sender.send(self.get_image(url));
     }
 }

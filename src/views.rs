@@ -32,26 +32,27 @@ pub struct InitialView<'a> {
 
 impl<'a> InitialView<'a> {
     pub fn display(self, ctx: &egui::Context) {
-        CentralPanel::default().show(ctx, |ui| {
-            Area::new(egui::Id::new("initial-join"))
-                .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        let resp = ui.text_edit_singleline(self.buffer);
-                        if resp.lost_focus()
-                            || ui.input(|i| i.key_pressed(egui::Key::Enter))
-                            || ui.button("Join").clicked()
-                        {
-                            let buf = std::mem::take(self.buffer);
-                            let buf = buf.trim();
-                            if !buf.is_empty() {
-                                self.twitch.writer().join(buf);
-                            }
+        Area::new(egui::Id::new("initial-join"))
+            .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let resp = ui.text_edit_singleline(self.buffer);
+                    if resp.lost_focus()
+                        || ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        || ui.button("Join").clicked()
+                    {
+                        let buf = std::mem::take(self.buffer);
+                        let buf = buf.trim();
+                        if !buf.is_empty() {
+                            self.twitch.writer().join(buf);
                         }
-                        resp.request_focus();
-                    });
+                    }
+                    resp.request_focus();
                 });
-        });
+            });
+
+        // fill in the window
+        CentralPanel::default().show(ctx, |_ui| {});
     }
 }
 
@@ -514,13 +515,7 @@ impl<'a> StartScreen<'a> {
                 };
             }
             twitch::Status::Reconnecting { when, after } => {
-                // let when = ctx.data_mut(|d| {
-                //     *d.get_temp_mut_or_insert_with(egui::Id::new("demo-id"), || Instant::now())
-                // });
-                // if when.elapsed() > Duration::from_secs(5) {
-                //     ctx.data_mut(|d| d.remove::<Instant>(egui::Id::new("demo-id")));
-                // }
-                self.display_reconnecting(ctx, when, Duration::from_secs(5));
+                self.display_reconnecting(ctx, when, after);
             }
         }
     }
@@ -566,7 +561,7 @@ impl<'a> StartScreen<'a> {
                 });
 
             // fill in the window
-            CentralPanel::default().show(ctx, |ui| {});
+            CentralPanel::default().show(ctx, |_ui| {});
             return;
         }
 
@@ -589,40 +584,38 @@ impl<'a> StartScreen<'a> {
     fn display_reconnecting(self, ctx: &egui::Context, when: Instant, after: Duration) {
         static LABEL: &str = "waiting to reconnect";
 
-        let max_rect = ctx.screen_rect();
         let fid = TextStyle::Monospace.resolve(&ctx.style());
         let width = ctx.fonts(|f| LABEL.chars().fold(0.0, |a, c| a + f.glyph_width(&fid, c)));
 
-        CentralPanel::default().show(ctx, |ui| {
-            Area::new("reconnect-screen")
-                .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-                .interactable(true)
-                .show(ctx, |ui| {
-                    let max_rect = ui.available_rect_before_wrap();
-                    let max_size = (max_rect.size() * 0.5).max(vec2(width * 1.5, 0.0));
+        Area::new("reconnect-screen")
+            .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+            .interactable(true)
+            .show(ctx, |ui| {
+                let max_rect = ui.available_rect_before_wrap();
+                let max_size = (max_rect.size() * 0.5).max(vec2(width * 1.5, 0.0));
 
-                    Frame::central_panel(ui.style())
-                        .outer_margin(Margin::symmetric(max_size.x * 0.5, 0.0))
-                        .show(ui, |ui| {
-                            let diff = after.as_secs_f32() - when.elapsed().as_secs_f32();
-                            let resp = Progress {
-                                pos: egui::emath::inverse_lerp(0.0..=after.as_secs_f32(), diff)
-                                    .unwrap(),
-                                text: LABEL,
-                                texture_id: Self::load_vohiyo(ui.ctx()).into(),
-                            }
-                            .display(ui)
-                            .on_hover_ui_at_pointer(
-                                |ui: &mut egui::Ui| {
-                                    let label = match diff.ceil() as u16 {
-                                        ..=1 => Cow::from("less than 1 second remains"),
-                                        d => Cow::from(format!("{d} seconds remaining")),
-                                    };
-                                    ui.monospace(&*label);
-                                },
-                            );
+                Frame::central_panel(ui.style())
+                    .outer_margin(Margin::symmetric(max_size.x * 0.5, 0.0))
+                    .show(ui, |ui| {
+                        let diff = after.as_secs_f32() - when.elapsed().as_secs_f32();
+                        Progress {
+                            pos: egui::emath::inverse_lerp(0.0..=after.as_secs_f32(), diff)
+                                .unwrap(),
+                            text: LABEL,
+                            texture_id: Self::load_vohiyo(ui.ctx()).into(),
+                        }
+                        .display(ui)
+                        .on_hover_ui_at_pointer(|ui: &mut egui::Ui| {
+                            let label = match diff.ceil() as u16 {
+                                ..=1 => Cow::from("less than 1 second remains"),
+                                d => Cow::from(format!("{d} seconds remaining")),
+                            };
+                            ui.monospace(&*label);
                         });
-                });
-        });
+                    });
+            });
+
+        // fill in the window
+        CentralPanel::default().show(ctx, |_ui| {});
     }
 }

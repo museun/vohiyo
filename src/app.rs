@@ -177,7 +177,7 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // TODO make this optional (its only needed for smooth image animations)
         ctx.request_repaint_after(std::time::Duration::from_secs_f32(1.0 / 60.0));
 
@@ -188,7 +188,7 @@ impl eframe::App for App {
         }
 
         self.stream_check.poll();
-        while let Some(event) = self.stream_check.poll_event() {
+        while let Some(_event) = self.stream_check.poll_event() {
             //
         }
 
@@ -198,7 +198,7 @@ impl eframe::App for App {
         self.cache.poll();
 
         match &mut self.screen {
-            Screen::Disconnected | Screen::Reconnecting { .. } => {
+            Screen::Disconnected => {
                 StartScreen {
                     twitch: &mut self.twitch,
                     screen: &mut self.screen,
