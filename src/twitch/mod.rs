@@ -45,12 +45,13 @@ pub enum Message {
     Join { channel: String },
     Privmsg { msg: Privmsg<'static> },
     Finished { msg: Privmsg<'static> },
+    InvalidCredentials,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Config {
-    pub name: String,
-    pub token: String,
+    pub user_name: String,
+    pub oauth_token: String,
 }
 
 async fn run(
@@ -106,7 +107,8 @@ async fn run(
 
         let (stream_read, mut stream_write) = stream.split();
 
-        let register = register(&config.name, &config.token, ALL_CAPABILITIES).to_string();
+        let register =
+            register(&config.user_name, &config.oauth_token, ALL_CAPABILITIES).to_string();
         if let Err(err) = write_all(register, &mut stream_write).await {
             eprintln!("cannot write: {err}");
             reconnect!();
@@ -203,8 +205,6 @@ async fn run(
                         };
                     }
 
-                    eprintln!(">{msg}", msg = msg.raw.escape_debug());
-
                     match msg.as_enum() {
                         TwitchMessage::Privmsg(msg) => {
                             let msg = msg.into_static();
@@ -235,6 +235,14 @@ async fn run(
                             send_event!(Event::UserState {
                                 msg: msg.into_static(),
                             });
+                        }
+
+                        #[allow(deprecated)]
+                        TwitchMessage::Notice(msg)
+                            if &msg.message == "Login authentication failed" =>
+                        {
+                            send_event!(Event::InvalidCredentials);
+                            break 'outer;
                         }
 
                         TwitchMessage::GlobalUserState(msg) => {
@@ -278,7 +286,13 @@ async fn run(
                     break 'outer;
                 }
 
-                Either::Right(..) => {
+                Either::Right(Err(err)) => {
+                    eprintln!("cannot read: {err}");
+                    reconnect!();
+                }
+
+                Either::Right(Ok(None)) => {
+                    eprintln!("read no data from socket");
                     reconnect!();
                 }
             }
@@ -290,6 +304,10 @@ async fn write_all(
     s: impl AsRef<[u8]> + Send + Sync,
     w: &mut (impl AsyncWrite + Unpin + Send + Sync),
 ) -> std::io::Result<()> {
+    if let Ok(data) = std::str::from_utf8(s.as_ref()) {
+        eprintln!("-> {data}", data = data.escape_debug())
+    }
+
     w.write_all(s.as_ref()).await?;
     w.flush().await
 }

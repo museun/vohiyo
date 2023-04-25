@@ -1,17 +1,18 @@
-use eframe::CreationContext;
-use egui::{FontData, FontDefinitions, Key};
-use reqwest::header::HeaderName;
+use egui::{CentralPanel, Key, RichText};
+
 use twitch_message::builders::{PrivmsgBuilder, TagsBuilder};
 
 use crate::{
     db, helix,
     runtime::{EmoteMap, GameMap, ImageCache, StreamCheck, UserMap},
-    state::{Channel, MessageOpts, SavedState, Screen, State, ViewState},
+    state::{Channel, CredentialsKind, MessageOpts, Screen, State, ViewState},
     twitch,
     views::{InitialView, MainView, StartView},
 };
 
-pub struct App {
+use super::Loaded;
+
+pub struct ReadyApp {
     pub state: State,
     pub screen: Screen,
     pub helix: helix::Client,
@@ -23,42 +24,52 @@ pub struct App {
     pub game_map: GameMap,
     pub last: Option<(PrivmsgBuilder, TagsBuilder)>,
     pub conn: db::Connection,
+
+    helix_error: helix::ClientError,
+    loaded: Loaded,
 }
 
-impl App {
-    pub const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+impl ReadyApp {
+    pub(super) fn create(ctx: &egui::Context, loaded: super::Loaded) -> Self {
+        let http = crate::default_http_client();
 
-    pub fn create(cc: &CreationContext, config: twitch::Config) -> Box<dyn eframe::App> {
-        cc.egui_ctx.set_pixels_per_point(1.5);
-        Self::load_fonts(&cc.egui_ctx);
+        let (helix, helix_error) = helix::Client::create(
+            ctx.clone(),
+            helix::Config {
+                client_id: loaded.client_id.clone(),
+                client_secret: loaded.client_secret.clone(),
+            },
+        );
 
-        let mut state = SavedState::load("vohiyo.toml").unwrap_or_default();
-
-        let http = reqwest::ClientBuilder::new()
-            .default_headers(
-                std::iter::once((
-                    HeaderName::from_static("user-agent"),
-                    Self::USER_AGENT.parse().unwrap(),
-                ))
+        let mut state = State {
+            channels: loaded
+                .channels
+                .clone()
+                .into_iter()
+                .map(|s| Channel::new(&s))
                 .collect(),
-            )
-            .build()
-            .expect("valid client configuration");
+            active: loaded.active,
+            identity: None,
+        };
 
-        let helix = helix::Client::create(cc.egui_ctx.clone());
-        let mut emote_map = EmoteMap::create(helix.clone(), cc.egui_ctx.clone(), http.clone());
+        let mut emote_map = EmoteMap::create(helix.clone(), ctx.clone(), http.clone());
 
         let conn = db::Connection::create("history.db");
-        let history = conn.history();
         for channel in &mut state.channels {
-            let messages = history.get_channel_messages(&channel.name, 250);
+            let messages = conn.history().get_channel_messages(&channel.name, 250);
             if let Some(msg) = messages.last() {
                 channel.mark_end_of_history(msg.msg_id);
             }
             channel.messages.populate(messages, &mut emote_map);
         }
 
-        let twitch = twitch::Client::create(config, cc.egui_ctx.clone());
+        let twitch = twitch::Client::create(
+            twitch::Config {
+                user_name: loaded.user_name.clone(),
+                oauth_token: loaded.oauth_token.clone(),
+            },
+            ctx.clone(),
+        );
 
         let mut user_map = UserMap::create(helix.clone());
 
@@ -67,10 +78,10 @@ impl App {
             user_map.get(channel);
         }
 
-        Box::new(Self {
+        Self {
             screen: Screen::default(),
-            stream_check: StreamCheck::create(helix.clone(), cc.egui_ctx.clone()),
-            cache: ImageCache::new(http, cc.egui_ctx.clone()),
+            stream_check: StreamCheck::create(helix.clone(), ctx.clone()),
+            cache: ImageCache::new(http, ctx.clone()),
             emote_map,
             game_map: GameMap::create(helix.clone()),
             user_map,
@@ -78,32 +89,12 @@ impl App {
             state,
             twitch,
             helix,
+            loaded,
 
             last: None,
 
+            helix_error,
             conn,
-        })
-    }
-
-    fn load_fonts(ctx: &egui::Context) {
-        let mut fonts = FontDefinitions::empty();
-
-        macro_rules! load_font {
-        ($($font:expr => $entry:expr),*) => {
-            $(
-                fonts.font_data.insert($font.into(), FontData::from_static(
-                    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/fonts/", $font, ".ttf")))
-                );
-                fonts.families.entry($entry).or_default().push($font.into());
-            )*
-            ctx.set_fonts(fonts)
-        };
-    }
-
-        load_font! {
-            "Roboto-Regular"     => egui::FontFamily::Proportional,
-            "RobotoMono-Regular" => egui::FontFamily::Monospace,
-            "RobotoMono-Bold"    => egui::FontFamily::Name("bold".into())
         }
     }
 
@@ -142,11 +133,17 @@ impl App {
                 }
             }
 
+            twitch::Message::InvalidCredentials => {
+                self.screen = Screen::InvalidCredentials {
+                    kind: crate::state::CredentialsKind::Twitch,
+                }
+            }
+
             this @ (twitch::Message::Finished { .. } | twitch::Message::Privmsg { .. }) => {
                 let local = matches!(this, twitch::Message::Finished { .. });
                 let (twitch::Message::Finished { msg }
-                | twitch::Message::Privmsg { msg }) = this
-                else { unreachable!() };
+            | twitch::Message::Privmsg { msg }) = this
+            else { unreachable!() };
 
                 self.conn.history().insert(&msg);
 
@@ -174,8 +171,15 @@ impl App {
     }
 }
 
-impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+impl super::VohiyoApp for ReadyApp {
+    type Target = super::Transition;
+
+    fn update(
+        &mut self,
+        ctx: &egui::Context,
+        _frame: &mut eframe::Frame,
+        target: &mut Self::Target,
+    ) {
         // TODO make this optional (its only needed for smooth image animations)
         ctx.request_repaint_after(std::time::Duration::from_secs_f32(1.0 / 60.0));
 
@@ -183,6 +187,16 @@ impl eframe::App for App {
 
         while let Some(event) = self.twitch.poll(&mut self.state.identity, &mut self.last) {
             self.handle_message(event);
+        }
+
+        while let Some(event) = self.helix_error.poll() {
+            match event {
+                helix::Event::InvalidCredentials => {
+                    self.screen = Screen::InvalidCredentials {
+                        kind: crate::state::CredentialsKind::Helix,
+                    }
+                }
+            }
         }
 
         self.stream_check.poll();
@@ -196,7 +210,31 @@ impl eframe::App for App {
         self.cache.poll();
 
         match &mut self.screen {
-            Screen::Disconnected => {
+            Screen::InvalidCredentials { kind } => {
+                CentralPanel::default().show(ctx, |ui| {
+                    ui.heading(RichText::new("Error").color(ui.visuals().error_fg_color));
+                    ui.separator();
+
+                    match kind {
+                        CredentialsKind::Twitch => {
+                            ui.label("Your user name and OAuth token aren't a valid combination");
+                        }
+                        CredentialsKind::Helix => {
+                            ui.label("Your Twitch Client-ID and Client-Secret aren't in agreement");
+                        }
+                    }
+
+                    ui.separator();
+
+                    if ui.button("Edit Configuration").clicked() {
+                        *target = Self::Target::Configuration {
+                            loaded: std::mem::take(&mut self.loaded),
+                        }
+                    }
+                });
+            }
+
+            Screen::Disconnected { .. } => {
                 StartView {
                     twitch: &mut self.twitch,
                     screen: &mut self.screen,
@@ -231,11 +269,5 @@ impl eframe::App for App {
         }
     }
 
-    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
-        SavedState { state: &self.state }.save("vohiyo.toml");
-    }
-
-    fn persist_egui_memory(&self) -> bool {
-        false
-    }
+    fn save(&mut self, _storage: &mut dyn eframe::Storage) {}
 }

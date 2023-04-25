@@ -4,8 +4,8 @@ use std::{
 };
 
 use egui::{
-    pos2, vec2, Align2, Area, CentralPanel, Color32, Frame, Margin, Rect, Sense, Spinner,
-    TextStyle, Vec2,
+    pos2, vec2, Align2, Area, CentralPanel, Color32, CursorIcon, Frame, Margin, Order, Rect, Sense,
+    Spinner, TextStyle, Vec2,
 };
 
 use crate::{
@@ -29,11 +29,11 @@ impl<'a> StartView<'a> {
             include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/vohiyo.png"));
 
         VOHIYO_HANDLE.get_or_init(|| {
-        let Image::Static(handle) = Image::load_rgba_data(ctx, "vohiyo.png", IMAGE_DATA).unwrap() else {
-            unreachable!()
-        };
-        handle
-    })
+            let Image::Static(handle) = Image::load_rgba_data(ctx, "vohiyo.png", IMAGE_DATA).unwrap() else {
+                unreachable!()
+            };
+            handle
+        })
     }
 
     pub fn display(self, ctx: &egui::Context) {
@@ -41,45 +41,63 @@ impl<'a> StartView<'a> {
             status @ (twitch::Status::NotConnected | twitch::Status::Connecting) => {
                 self.display_start(ctx, matches!(status, twitch::Status::Connecting));
             }
+
+            twitch::Status::Reconnecting { when, after } => {
+                self.display_reconnecting(ctx, when, after);
+            }
+
             twitch::Status::Connected => {
                 *self.screen = Screen::Connected {
                     state: ViewState::MainView,
                 };
             }
-            twitch::Status::Reconnecting { when, after } => {
-                self.display_reconnecting(ctx, when, after);
-            }
         }
     }
 
     fn display_start(self, ctx: &egui::Context, connecting: bool) {
-        let handle = Self::load_vohiyo(ctx);
+        let start_inlay = |ui: &mut egui::Ui| {
+            ui.horizontal(|ui| {
+                let fid = TextStyle::Body.resolve(ui.style());
+                let w = ui.fonts(|fonts| fonts.glyph_width(&fid, ' '));
+                ui.scope(|ui| {
+                    ui.spacing_mut().item_spacing.x = w;
+                    ui.colored_label(Color32::from_rgb(0x64, 0x41, 0xA5), "Twitch");
+                    ui.label("name:");
 
-        let img_size = handle.size_vec2();
-        let size = ctx.screen_rect().size() * 0.2;
-        let center = ctx.screen_rect().center() - pos2(0.0, size.y * 0.5);
+                    let resp = ui.monospace(self.twitch.user_name());
+                    let resp = ui.allocate_rect(resp.rect, Sense::click());
 
-        let image_frame = |ui: &mut egui::Ui| {
-            Frame::none()
-                .inner_margin(Margin::symmetric(10.0, 0.0))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        let fid = TextStyle::Body.resolve(ui.style());
-                        let w = ui.fonts(|fonts| fonts.glyph_width(&fid, ' '));
-                        ui.scope(|ui| {
-                            ui.spacing_mut().item_spacing.x = w;
-                            ui.colored_label(Color32::from_rgb(0x64, 0x41, 0xA5), "Twitch");
-                            ui.label("name:");
-                            ui.monospace(self.twitch.user_name())
-                        });
-                    });
+                    ui.painter().line_segment(
+                        [resp.rect.left_bottom(), resp.rect.right_bottom()],
+                        (1.0, Color32::WHITE.gamma_multiply(0.6)),
+                    );
+
+                    if resp.hovered() {
+                        ui.ctx().set_cursor_icon(CursorIcon::Help);
+                    }
+
+                    if resp.clicked() {}
                 });
+            });
         };
 
         Area::new("start-inlay")
-            .anchor(Align2::RIGHT_TOP, Vec2::ZERO)
-            .movable(false)
-            .show(ctx, image_frame);
+            .anchor(Align2::RIGHT_TOP, vec2(-10.0, 0.0))
+            .interactable(true)
+            .order(Order::Foreground)
+            .show(ctx, start_inlay);
+
+        // if let Some(properties) = properties {
+        //     Area::new("connection-properties")
+        //         .anchor(Align2::LEFT_TOP, resp.rect.left_bottom().to_vec2())
+        //         .show(ctx, |ui| {
+        //             Frame::none()
+        //                 .inner_margin(Margin::symmetric(10.0, 10.0))
+        //                 .stroke(Stroke::new(1.0, Color32::RED))
+        //                 .fill(ui.visuals().extreme_bg_color)
+        //                 .show(ui, |ui| ui.label("testing"))
+        //         });
+        // }
 
         if connecting {
             Area::new("connecting-inlay")
@@ -98,14 +116,20 @@ impl<'a> StartView<'a> {
         }
 
         CentralPanel::default().show(ctx, |ui| {
+            let handle = Self::load_vohiyo(ctx);
+
+            let size = ctx.screen_rect().size() * 0.2;
+            let center = ctx.screen_rect().center() - pos2(0.0, size.y * 0.5);
+
             let rect = Rect::from_center_size(center.to_pos2(), size);
             let resp = ui
-                .put(rect, |ui: &mut egui::Ui| {
-                    let widget = egui::Image::new(handle, img_size);
-                    ui.add(widget)
-                })
+                .put(rect, egui::Image::new(handle, handle.size_vec2()))
                 .interact(Sense::click())
                 .on_hover_text("Click to connect to Twitch");
+
+            if resp.hovered() {
+                ui.ctx().set_cursor_icon(CursorIcon::Help)
+            }
 
             if resp.clicked() {
                 self.twitch.connect()

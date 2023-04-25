@@ -2236,6 +2236,7 @@ dependencies = [
  "reqwest",
  "rusqlite",
  "serde",
+ "serde_json",
  "simple_env_load",
  "time",
  "tokio",

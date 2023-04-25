@@ -11,6 +11,7 @@ pub enum Event {
     ChannelId { channel: String, room_id: String },
     UserState { msg: UserState<'static> },
     Reconnecting { duration: Duration },
+    InvalidCredentials,
 }
 
 pub struct Events {

@@ -40,7 +40,7 @@ impl Client {
     }
 
     pub fn user_name(&self) -> &str {
-        &self.config.name
+        &self.config.user_name
     }
 
     pub fn connect(&mut self) {
@@ -114,6 +114,7 @@ impl Client {
                 return None;
             }
 
+            Event::InvalidCredentials => return Some(Message::InvalidCredentials),
             Event::Join { channel } => return Some(Message::Join { channel }),
             Event::Privmsg { msg } => return Some(Message::Privmsg { msg }),
         };

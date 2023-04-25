@@ -4,51 +4,45 @@ use std::sync::Arc;
 use reqwest::{header::HeaderName, StatusCode};
 use tokio::{sync::Mutex, task::JoinSet};
 
-use crate::{repaint::ErasedRepaint, repaint::Repaint, resolver::Fut};
+use crate::{app::App, repaint::ErasedRepaint, repaint::Repaint, resolver::Fut};
 
 pub mod data;
 
-pub struct HelixConfig {
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Config {
     pub client_id: String,
     pub client_secret: String,
 }
 
-impl HelixConfig {
-    fn load() -> Self {
-        fn get(key: &str) -> String {
-            std::env::var(key).unwrap_or_else(|_| panic!("'{key}' is not set"))
-        }
+pub struct ClientError {
+    recv: tokio::sync::mpsc::UnboundedReceiver<Event>,
+}
 
-        Self {
-            client_id: get("TWITCH_CLIENT_ID"),
-            client_secret: get("TWITCH_CLIENT_SECRET"),
-        }
+impl ClientError {
+    pub fn poll(&mut self) -> Option<Event> {
+        self.recv.try_recv().ok()
     }
 }
 
-pub static HELIX_CONFIG: once_cell::sync::Lazy<HelixConfig> =
-    once_cell::sync::Lazy::new(HelixConfig::load);
+pub enum Event {
+    InvalidCredentials,
+}
 
 #[derive(Clone)]
 pub struct Client {
     client: reqwest::Client,
     repaint: ErasedRepaint,
     bearer_token: Arc<Mutex<Option<Arc<String>>>>,
+    config: Arc<Mutex<Config>>,
+    sender: tokio::sync::mpsc::UnboundedSender<Event>,
 }
 
 impl Client {
-    pub fn create(repaint: impl Repaint) -> Self {
-        let headers = [
-            ("user-agent", crate::app::App::USER_AGENT),
-            ("client-id", &*HELIX_CONFIG.client_id),
-        ]
-        .into_iter()
-        .map(|(k, v)| {
-            (
-                HeaderName::from_static(k),
-                v.parse().expect("valid header name"),
-            )
-        })
+    pub fn create(repaint: impl Repaint, config: Config) -> (Self, ClientError) {
+        let headers = std::iter::once((
+            HeaderName::from_static("user-agent"),
+            App::USER_AGENT.parse().expect("valid user agent"),
+        ))
         .collect();
 
         let client = reqwest::ClientBuilder::new()
@@ -56,11 +50,22 @@ impl Client {
             .build()
             .expect("valid client configuration");
 
-        Self {
+        let (sender, recv) = tokio::sync::mpsc::unbounded_channel();
+
+        let this = Self {
             client,
             bearer_token: Arc::default(),
             repaint: repaint.erased(),
-        }
+            config: Arc::new(Mutex::new(config)),
+            sender,
+        };
+
+        (this, ClientError { recv })
+    }
+
+    pub fn update_config(&self, config: Config) {
+        let this = self.clone();
+        tokio::spawn(async move { *this.config.lock().await = config });
     }
 
     pub fn get_global_emotes(&self) -> Fut<Vec<data::EmoteSet>> {
@@ -229,10 +234,14 @@ impl Client {
     {
         // TODO exponential backoff (or atleast add some jitter)
         let resp = loop {
-            let token = self.fetch_bearer_token().await;
+            let token = match self.fetch_bearer_token().await {
+                Some(token) => token,
+                None => anyhow::bail!("cannot fetch bearer-token"),
+            };
             let req = self
                 .client
                 .get(ep)
+                .header("client-id", &self.config.lock().await.client_id)
                 .header("authorization", &*token)
                 .query(&query)
                 .build()?;
@@ -256,23 +265,27 @@ impl Client {
         Ok(data)
     }
 
-    async fn fetch_bearer_token(&self) -> Arc<String> {
+    async fn fetch_bearer_token(&self) -> Option<Arc<String>> {
         let mut token = self.bearer_token.lock().await;
         if let Some(token) = &mut *token {
-            return Arc::clone(token);
+            return Some(Arc::clone(token));
         }
 
-        let HelixConfig {
+        let Config {
             client_id,
             client_secret,
-        } = &*HELIX_CONFIG;
+        } = &*self.config.lock().await;
 
-        let bearer_token = Self::get_oauth(client_id, client_secret)
-            .await
-            // TODO make this fallible
-            .unwrap_or_else(|err| panic!("cannot update bearer token: {err}"));
+        let bearer_token = match Self::get_oauth(client_id, client_secret).await {
+            Ok(token) => token,
+            Err(_) => {
+                // TODO actually check the error
+                let _ = self.sender.send(Event::InvalidCredentials);
+                return None;
+            }
+        };
 
-        Arc::clone(token.insert(Arc::from(bearer_token)))
+        Some(Arc::clone(token.insert(Arc::from(bearer_token))))
     }
 
     async fn get_oauth(client_id: &str, client_secret: &str) -> anyhow::Result<String> {
@@ -295,6 +308,7 @@ impl Client {
                 client_secret,
                 grant_type: "client_credentials",
             })
+            .header("user-agent", App::USER_AGENT)
             .send()
             .await?
             .error_for_status()?

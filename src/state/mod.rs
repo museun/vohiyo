@@ -6,16 +6,22 @@ pub use message::{Message, MessageOpts, Span};
 mod channel;
 pub use channel::Channel;
 
-mod save_state;
-pub use save_state::SavedState;
-
-#[derive(Default, Debug)]
+#[derive(Debug, Default)]
 pub enum Screen {
     #[default]
     Disconnected,
     Connected {
         state: ViewState,
     },
+    InvalidCredentials {
+        kind: CredentialsKind,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum CredentialsKind {
+    Twitch,
+    Helix,
 }
 
 #[derive(Debug)]

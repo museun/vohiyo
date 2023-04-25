@@ -10,14 +10,14 @@ use twitch_message::{
 };
 
 use crate::{
-    app::App,
+    app::ReadyApp,
     input::Input,
     runtime::{EmoteMap, ImageCache},
     state::{MessageOpts, Span},
 };
 
 pub struct MainView<'a> {
-    pub app: &'a mut App,
+    pub app: &'a mut ReadyApp,
 }
 
 impl<'a> MainView<'a> {
@@ -122,7 +122,7 @@ impl<'a> MainView<'a> {
         });
     }
 
-    fn display_tab_bar(ctx: &egui::Context, app: &mut App) {
+    fn display_tab_bar(ctx: &egui::Context, app: &mut ReadyApp) {
         let style = ctx.style();
 
         let fid = TextStyle::Body.resolve(&style);
@@ -266,7 +266,7 @@ impl<'a> MainView<'a> {
             });
     }
 
-    fn display_topic_bar(ctx: &egui::Context, app: &mut App) {
+    fn display_topic_bar(ctx: &egui::Context, app: &mut ReadyApp) {
         let channel = &app.state.channels[app.state.active];
 
         let Some(user) = app.user_map.get(&channel.name) else { return };
@@ -369,7 +369,7 @@ impl<'a> MainView<'a> {
         });
     }
 
-    fn create_self_message(app: &mut App, data: &str) -> (PrivmsgBuilder, TagsBuilder) {
+    fn create_self_message(app: &mut ReadyApp, data: &str) -> (PrivmsgBuilder, TagsBuilder) {
         let channel = &app.state.channels[app.state.active].name;
         let identity = app.state.identity.as_ref().expect("we should be connected");
 
@@ -401,7 +401,7 @@ impl<'a> MainView<'a> {
         (pm, tags)
     }
 
-    fn build_emotes(app: &App, data: &str) -> Option<String> {
+    fn build_emotes(app: &ReadyApp, data: &str) -> Option<String> {
         let mut emotes = HashMap::<&str, Vec<(usize, usize)>>::new();
 
         let mut start = 0;
